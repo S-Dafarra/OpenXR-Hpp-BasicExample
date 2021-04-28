@@ -18,8 +18,6 @@
 #define XR_USE_PLATFORM_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#elif defined(__ANDROID__)
-#define XR_USE_PLATFORM_ANDROID
 #else
 #define XR_USE_PLATFORM_XLIB
 #include <X11/Xlib.h>
@@ -81,13 +79,7 @@ inline std::string to_string(Level level) {
 }
 
 inline void log(Level level, const std::string& message) {
-    //auto output = fmt::format("{} {}: {}", std::chrono::system_clock::now(), to_string(level), message);
-//    auto output = fmt::format("{} {}: {}", std::chrono::system_clock::now(), to_string(level), message);
     std::string output = "[" + to_string(level) + "] " + message;
-#ifdef WIN32
-    OutputDebugStringA(output.c_str());
-    OutputDebugStringA("\n");
-#endif
     std::cout << output << std::endl;
 }
 
@@ -129,10 +121,6 @@ Messenger create(const xr::Instance& instance,
 }
 
 }  // namespace DebugUtilsEXT
-
-inline XrFovf toTanFovf(const XrFovf& fov) {
-    return { tanf(fov.angleLeft), tanf(fov.angleRight), tanf(fov.angleUp), tanf(fov.angleDown) };
-}
 
 }  // namespace xrs
 
@@ -417,15 +405,12 @@ struct OpenXrExample {
             if (viewConfigType != xr::ViewConfigurationType::PrimaryStereo) {
                 throw std::runtime_error("Example only supports stereo-based HMD rendering");
             }
-            //xr::ViewConfigurationProperties viewConfigProperties =
-            //    instance.getViewConfigurationProperties(systemId, viewConfigType);
-            //logging::log(logging::Level::Info, fmt::format(""));
         }
 
         std::vector<xr::ViewConfigurationView> viewConfigViews =
             instance.enumerateViewConfigurationViewsToVector(systemId, xr::ViewConfigurationType::PrimaryStereo);
 
-        // Instead of createing a swapchain per-eye, we create a single swapchain of double width.
+        // Instead of creating a swapchain per-eye, we create a single swapchain of double width.
         // Even preferable would be to create a swapchain texture array with one layer per eye, so that we could use the
         // VK_KHR_multiview to render both eyes with a single set of draws, but sadly the Oculus runtime doesn't currently
         // support texture array swapchains
@@ -478,14 +463,19 @@ struct OpenXrExample {
     }
 
     xr::Session session;
+
+# ifndef WIN32
+    Display* display;
+#endif
+
     void prepareXrSession() {
 
 # if defined(WIN32)
         xr::GraphicsBindingOpenGLWin32KHR graphicsBinding{ wglGetCurrentDC(), wglGetCurrentContext() };
-# elif defined (__ANDROID__)
 #else
         xr::GraphicsBindingOpenGLXlibKHR graphicsBinding;
-        graphicsBinding.xDisplay = XOpenDisplay(NULL);
+        display = XOpenDisplay(NULL);
+        graphicsBinding.xDisplay = display;
         graphicsBinding.glxContext = glXGetCurrentContext();
         graphicsBinding.glxDrawable = glXGetCurrentDrawable();
 #endif
@@ -739,6 +729,14 @@ struct OpenXrExample {
             instance.destroy();
             instance = nullptr;
         }
+
+# ifndef WIN32
+        if (display)
+        {
+            XCloseDisplay(display);
+            display = nullptr;
+        }
+#endif
 
         SDL_Quit();
     }
