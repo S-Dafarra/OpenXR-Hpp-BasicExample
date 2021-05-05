@@ -12,15 +12,12 @@
 
 #include <GL/gl.h>
 #include <GL/glext.h>
-#include <GL/glx.h>
 
 #if defined(WIN32)
 #define XR_USE_PLATFORM_WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 #else
 #define XR_USE_PLATFORM_XLIB
-#include <X11/Xlib.h>
+#include <GL/glx.h>
 #endif
 
 
