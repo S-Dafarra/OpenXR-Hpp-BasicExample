@@ -461,9 +461,6 @@ struct OpenXrExample {
 
     xr::Session session;
 
-# ifndef WIN32
-    Display* display;
-#endif
 
     void prepareXrSession() {
 
@@ -471,8 +468,7 @@ struct OpenXrExample {
         xr::GraphicsBindingOpenGLWin32KHR graphicsBinding{ wglGetCurrentDC(), wglGetCurrentContext() };
 #else
         xr::GraphicsBindingOpenGLXlibKHR graphicsBinding;
-        display = XOpenDisplay(NULL);
-        graphicsBinding.xDisplay = display;
+        graphicsBinding.xDisplay = glXGetCurrentDisplay();
         graphicsBinding.glxContext = glXGetCurrentContext();
         graphicsBinding.glxDrawable = glXGetCurrentDrawable();
 #endif
@@ -726,14 +722,6 @@ struct OpenXrExample {
             instance.destroy();
             instance = nullptr;
         }
-
-# ifndef WIN32
-        if (display)
-        {
-            XCloseDisplay(display);
-            display = nullptr;
-        }
-#endif
 
         SDL_Quit();
     }
