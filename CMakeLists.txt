@@ -76,7 +76,7 @@ endif()
 ### Dependencies
 find_package(Threads REQUIRED)
 find_package(OpenXR REQUIRED)
-find_package(SDL2 CONFIG REQUIRED)
+find_package(glfw3 REQUIRED)
 
 ## This is to select the newest version of OpenGL
 if (POLICY CMP0072)
@@ -114,7 +114,7 @@ add_executable(${TARGET_NAME} main.cpp)
 
 target_link_libraries(${TARGET_NAME} PRIVATE OpenXR::openxr_loader)
 target_link_libraries(${TARGET_NAME} PRIVATE OpenXR::OpenXR-Hpp)
-target_link_libraries(${TARGET_NAME} PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(${TARGET_NAME} PRIVATE glfw)
 target_link_libraries(${TARGET_NAME} PRIVATE ${OPENGL_LIBRARIES})
 
 if (NOT WIN32)

@@ -13,13 +13,24 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 
-#if defined(WIN32)
-#define XR_USE_PLATFORM_WIN32
-#else
-#define XR_USE_PLATFORM_XLIB
-#include <GL/glx.h>
+#if defined(_WIN32)
+ #define XR_USE_PLATFORM_WIN32
+ #define GLFW_EXPOSE_NATIVE_WIN32
+ #define GLFW_EXPOSE_NATIVE_WGL
+#elif defined(__APPLE__)
+ #define XR_USE_PLATFORM_XLIB
+ #define GLFW_EXPOSE_NATIVE_COCOA
+ #define GLFW_EXPOSE_NATIVE_NSGL
+ #include <GL/glx.h>
+#elif defined(__linux__)
+ #define XR_USE_PLATFORM_XLIB
+ #define GLFW_EXPOSE_NATIVE_X11
+ #define GLFW_EXPOSE_NATIVE_GLX
+ #include <GL/glx.h>
 #endif
 
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
 
 #include <cstdint>
 #include <unordered_map>
@@ -27,8 +38,6 @@
 
 #include <openxr/openxr_platform.h>
 #include <openxr/openxr.hpp>
-
-#include <SDL2/SDL.h>
 
 #include <string>
 #include <chrono>
@@ -140,6 +149,15 @@ inline void debugMessageCallback(GLenum source,
                                  const void* userParam) {
     std::cout << message << std::endl;
 }
+
+inline void glfwErrorCallback(int error, const char* description)
+{
+    std::cout << error << description;
+}
+
+struct OpenXrExample;
+
+void glfwKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 std::string formatToString(GLenum format) {
     switch (format) {
@@ -424,8 +442,7 @@ struct OpenXrExample {
         graphicsRequirements = instance.getOpenGLGraphicsRequirementsKHR(systemId, dispatch);
     }
 
-    SDL_Window* window;
-    SDL_GLContext context;
+    GLFWwindow* window;
     std::vector<unsigned int> windowSize;
 
     void prepareWindow() {
@@ -434,27 +451,24 @@ struct OpenXrExample {
         windowSize[0] /= 4;
         windowSize[1] /= 4;
 
-
-        if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-            LOG_ERROR("Unable to initialize SDL", "");
+        if ( !glfwInit() ) {
+            LOG_ERROR("Unable to initialize GLFW", "");
             return;
         }
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
-        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, graphicsRequirements.maxApiVersionSupported.major());
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, graphicsRequirements.maxApiVersionSupported.minor());
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+        glfwSetErrorCallback(glfwErrorCallback);
 
-        window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowSize[0], windowSize[1],
-                                  SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-        context = SDL_GL_CreateContext(window);
-        SDL_GL_MakeCurrent(window, context);
-        SDL_GL_SetSwapInterval(0);
+        glfwWindowHint(GLFW_DEPTH_BITS, 16);
+        window = glfwCreateWindow(windowSize[0], windowSize[1], "OpenXr Basic Example", nullptr, nullptr);
+        if (!window) {
+            LOG_ERROR("Could not create window", "");
+            return;
+        }
+
+        glfwSetWindowUserPointer(window, this);
+        glfwSetKeyCallback(window, glfwKeyCallback);
+        glfwMakeContextCurrent(window);
+        glfwSwapInterval(1);
+
         glDebugMessageCallback(debugMessageCallback, NULL);
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     }
@@ -552,7 +566,7 @@ struct OpenXrExample {
     // Per-frame work                   //
     //////////////////////////////////////
     void frame() {
-        pollSdlEvents();
+        glfwPollEvents();
         pollXrEvents();
         if (quit) {
             return;
@@ -566,16 +580,15 @@ struct OpenXrExample {
         }
     }
 
-    void pollSdlEvents() {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            switch (event.type) {
-                case SDL_KEYUP:
-                    if (event.key.keysym.sym == SDLK_ESCAPE) {
-                        quit = true;
-                    }
-                    break;
-            }
+    void onKey(int key, int /*scancode*/, int action, int /*mods*/)
+    {
+        if (GLFW_PRESS != action) {
+            return;
+        }
+
+        if (key == GLFW_KEY_ESCAPE)
+        {
+            quit = true;
         }
     }
 
@@ -678,7 +691,11 @@ struct OpenXrExample {
         // fast blit from the fbo to the window surface
         glDisable(GL_SCISSOR_TEST);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, renderTargetSize[0], renderTargetSize[1], 0, 0, windowSize[0], windowSize[1], GL_COLOR_BUFFER_BIT,
+
+        GLint ww, wh;
+        glfwGetWindowSize(window, &ww, &wh);
+
+        glBlitFramebuffer(0, 0, renderTargetSize[0], renderTargetSize[1], 0, 0, ww, wh, GL_COLOR_BUFFER_BIT,
                           GL_NEAREST);
 
         glFramebufferTexture(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0);
@@ -686,7 +703,7 @@ struct OpenXrExample {
 
         swapchain.releaseSwapchainImage(xr::SwapchainImageReleaseInfo{});
 
-        SDL_GL_SwapWindow(window);
+        glfwSwapBuffers(window);
     }
 
     //////////////////////////////////////
@@ -712,8 +729,7 @@ struct OpenXrExample {
             session = nullptr;
         }
 
-        SDL_GL_DeleteContext(context);
-        SDL_DestroyWindow(window);
+        glfwDestroyWindow(window);
 
         if (messenger) {
             messenger.destroy(dispatch);
@@ -723,9 +739,15 @@ struct OpenXrExample {
             instance = nullptr;
         }
 
-        SDL_Quit();
+        glfwTerminate();
     }
 };
+
+void glfwKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    OpenXrExample* instance = (OpenXrExample*)glfwGetWindowUserPointer(window);
+    instance->onKey(key, scancode, action, mods);
+}
 
 int main(int argc, char* argv[]) {
     try {
